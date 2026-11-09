@@ -1,0 +1,51 @@
+{
+  "project": {
+    "id": "P2",
+    "name": "도담중 외 2교(장기중, 한솔중) 지붕방수 철거 및 외벽 보수공사",
+    "category": "지붕방수·외벽 보수",
+    "bid_no": "R26BK01345534",
+    "bid_ord": "000"
+  },
+  "files": [
+    {
+      "seq": 1,
+      "doc_type": "notice",
+      "discipline": "공통",
+      "file": "01_notice_[공고문]도담중 외 2교 지붕방수 철거 및 외벽 보수공사(PDF).pdf",
+      "size": 125148,
+      "sha256": "16af9ffc14cdf4f24ef9c0e75297436de3d28cd8bd2b7bafc5d889311f876f2e",
+      "url": "https://www.g2b.go.kr/pn/pnp/pnpe/UntyAtchFile/downloadFile.do?bidPbancNo=R26BK01345534&bidPbancOrd=000&fileType=&fileSeq=1&prcmBsneSeCd=07",
+      "fetched_at": "2026-11-02T21:24:08.731569+00:00"
+    },
+    {
+      "seq": 3,
+      "doc_type": "boq",
+      "discipline": "건축",
+      "file": "03_boq_[공내역서]도담중 외 2교 지붕방수 철거 및 외벽 보수공사.xlsx",
+      "size": 61937,
+      "sha256": "33a62d6dc3a38f6f693e8f0093fcf5d98375bd34e8b44626f3140f79370f4a77",
+      "url": "https://www.g2b.go.kr/pn/pnp/pnpe/UntyAtchFile/downloadFile.do?bidPbancNo=R26BK01345534&bidPbancOrd=000&fileType=&fileSeq=3&prcmBsneSeCd=07",
+      "fetched_at": "2026-11-02T21:24:09.194478+00:00"
+    },
+    {
+      "seq": 4,
+      "doc_type": "drawing",
+      "discipline": "건축",
+      "file": "04_drawing_[설계도면]도담중외2교.pdf",
+      "size": 8095417,
+      "sha256": "e47e7761b8eee5ea160afcd297b11c85dbd4bcbaddc21573515e5b74a64ec3dc",
+      "url": "https://www.g2b.go.kr/pn/pnp/pnpe/UntyAtchFile/downloadFile.do?bidPbancNo=R26BK01345534&bidPbancOrd=000&fileType=&fileSeq=4&prcmBsneSeCd=07",
+      "fetched_at": "2026-11-02T21:24:10.543692+00:00"
+    },
+    {
+      "seq": 5,
+      "doc_type": "spec",
+      "discipline": "건축",
+      "file": "05_spec_[시방서]도담중외2교 지붕방수 철거 및 외벽 보수공사.pdf",
+      "size": 552013,
+      "sha256": "310e5327a381a718aa59f365b7049f9f6329256ec7360f1aa8a88f3c9b2d9fc4",
+      "url": "https://www.g2b.go.kr/pn/pnp/pnpe/UntyAtchFile/downloadFile.do?bidPbancNo=R26BK01345534&bidPbancOrd=000&fileType=&fileSeq=5&prcmBsneSeCd=07",
+      "fetched_at": "2026-11-02T21:24:11.301421+00:00"
+    }
+  ]
+}

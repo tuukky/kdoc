@@ -1,0 +1,71 @@
+{
+  "project": {
+    "id": "P1",
+    "name": "국립국악고등학교 기숙사 화장실·샤워실·세탁실 개선공사",
+    "category": "화장실 개선 (타일·방수·위생설비)",
+    "bid_no": "R25BK00914281",
+    "bid_ord": "000"
+  },
+  "files": [
+    {
+      "seq": 2,
+      "doc_type": "spec",
+      "discipline": "건축",
+      "file": "02_spec_건축시방서_국립국악고등학교 기숙사 화장실,샤워실,세탁실 개선공사.pdf",
+      "size": 370078,
+      "sha256": "01b5050990de1bf1ada750e71e160cf2ea15dfc4b739a6042242d3cfb98bfda2",
+      "url": "https://www.g2b.go.kr/pn/pnp/pnpe/UntyAtchFile/downloadFile.do?bidPbancNo=R25BK00914281&bidPbancOrd=000&fileType=&fileSeq=2&prcmBsneSeCd=07",
+      "fetched_at": "2026-11-02T21:24:03.487310+00:00"
+    },
+    {
+      "seq": 3,
+      "doc_type": "drawing",
+      "discipline": "건축",
+      "file": "03_drawing_건축도면_국립국악고등학교 기숙사 화장실,샤워실,세탁실 개선공사.pdf",
+      "size": 5030990,
+      "sha256": "efb632c3c58bb76197f2d3958ba613b5c6c2bd25d1049a032df749725f1179af",
+      "url": "https://www.g2b.go.kr/pn/pnp/pnpe/UntyAtchFile/downloadFile.do?bidPbancNo=R25BK00914281&bidPbancOrd=000&fileType=&fileSeq=3&prcmBsneSeCd=07",
+      "fetched_at": "2026-11-02T21:24:05.151392+00:00"
+    },
+    {
+      "seq": 4,
+      "doc_type": "spec",
+      "discipline": "기계",
+      "file": "04_spec_기계일반시방서_국립국악고등학교 기숙사 화장실,샤워실,세탁실 개선공사.pdf",
+      "size": 292428,
+      "sha256": "9cf1ba1fbf4fd2ae53358c4de11283fff8dafc2601c7ae7d6957a7d21e5d9a59",
+      "url": "https://www.g2b.go.kr/pn/pnp/pnpe/UntyAtchFile/downloadFile.do?bidPbancNo=R25BK00914281&bidPbancOrd=000&fileType=&fileSeq=4&prcmBsneSeCd=07",
+      "fetched_at": "2026-11-02T21:24:05.809126+00:00"
+    },
+    {
+      "seq": 5,
+      "doc_type": "drawing",
+      "discipline": "기계",
+      "file": "05_drawing_기계도면_국립국악고등학교 기숙사 화장실,샤워실,세탁실 개선공사.pdf",
+      "size": 1441931,
+      "sha256": "d3bcb760787d1305a6080de25a8296c85baf87aece8cc719f0b9d3e94b0f7258",
+      "url": "https://www.g2b.go.kr/pn/pnp/pnpe/UntyAtchFile/downloadFile.do?bidPbancNo=R25BK00914281&bidPbancOrd=000&fileType=&fileSeq=5&prcmBsneSeCd=07",
+      "fetched_at": "2026-11-02T21:24:07.082335+00:00"
+    },
+    {
+      "seq": 6,
+      "doc_type": "boq",
+      "discipline": "건축+기계",
+      "file": "06_boq_공내역서_건축+기계합산 국립국악고등학교 기숙사 화장실,샤워실,세탁실 개선공사(계약용).xlsx",
+      "size": 115628,
+      "sha256": "84bada299202f5e3e2b921e90ce87053f47de76c8496706dab3fc69bb2cdee41",
+      "url": "https://www.g2b.go.kr/pn/pnp/pnpe/UntyAtchFile/downloadFile.do?bidPbancNo=R25BK00914281&bidPbancOrd=000&fileType=&fileSeq=6&prcmBsneSeCd=07",
+      "fetched_at": "2026-11-02T21:24:07.601889+00:00"
+    },
+    {
+      "seq": 7,
+      "doc_type": "boq",
+      "discipline": "기계",
+      "file": "07_boq_공내역서_기계공사_국립국악고등학교 기숙사 화장실,샤워실,세탁실 개선공사.xls",
+      "size": 161792,
+      "sha256": "e2a9eb14cb9f5119abbc7764a50d1e59046958dbf2b04156a83ead351072d138",
+      "url": "https://www.g2b.go.kr/pn/pnp/pnpe/UntyAtchFile/downloadFile.do?bidPbancNo=R25BK00914281&bidPbancOrd=000&fileType=&fileSeq=7&prcmBsneSeCd=07",
+      "fetched_at": "2026-11-02T21:24:08.183271+00:00"
+    }
+  ]
+}

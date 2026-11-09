@@ -1,0 +1,41 @@
+{
+  "project": {
+    "id": "P3",
+    "name": "현암중 화장실 환경개선 및 드라이비트 안전개선공사(계속비)",
+    "category": "화장실 개선 + 외벽 단열(드라이비트)",
+    "bid_no": "R25BK01205597",
+    "bid_ord": "000"
+  },
+  "files": [
+    {
+      "seq": 2,
+      "doc_type": "boq",
+      "discipline": "건축",
+      "file": "02_boq_공사내역서_현암중 화장실 환경개선 및 드라이비트 안전개선공사(계속비).xlsx",
+      "size": 125155,
+      "sha256": "2ba6c7ebea713fab92e91fa35dd1a20f29972b41df780aa8ce501bea602296c1",
+      "url": "https://www.g2b.go.kr/pn/pnp/pnpe/UntyAtchFile/downloadFile.do?bidPbancNo=R25BK01205597&bidPbancOrd=000&fileType=&fileSeq=2&prcmBsneSeCd=07",
+      "fetched_at": "2026-11-02T21:24:11.836358+00:00"
+    },
+    {
+      "seq": 3,
+      "doc_type": "spec",
+      "discipline": "건축(드라이비트)",
+      "file": "03_spec_공사시방서(드라이비트)_현암중 화장실 환경개선 및 드라이비트 안전개선공사(계속비).pdf",
+      "size": 347549,
+      "sha256": "5cdcfb8a6a5ce919676dc4b32c37e8f95b099b70c4aca54614d047cca7673b6c",
+      "url": "https://www.g2b.go.kr/pn/pnp/pnpe/UntyAtchFile/downloadFile.do?bidPbancNo=R25BK01205597&bidPbancOrd=000&fileType=&fileSeq=3&prcmBsneSeCd=07",
+      "fetched_at": "2026-11-02T21:24:12.505206+00:00"
+    },
+    {
+      "seq": 4,
+      "doc_type": "spec",
+      "discipline": "건축(화장실)",
+      "file": "04_spec_공사시방서(화장실)_현암중 화장실 환경개선 및 드라이비트 안전개선공사(계속비).pdf",
+      "size": 728320,
+      "sha256": "88f7002110f975923592a192026cbb834d8be9f7a855c69bd6e261fdb1022df8",
+      "url": "https://www.g2b.go.kr/pn/pnp/pnpe/UntyAtchFile/downloadFile.do?bidPbancNo=R25BK01205597&bidPbancOrd=000&fileType=&fileSeq=4&prcmBsneSeCd=07",
+      "fetched_at": "2026-11-02T21:24:13.403564+00:00"
+    }
+  ]
+}

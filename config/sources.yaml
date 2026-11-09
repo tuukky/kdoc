@@ -1,0 +1,40 @@
+# 나라장터(G2B) 공사 입찰공고 첨부파일 목록 (공개 자료)
+# 다운로드 URL: https://www.g2b.go.kr/pn/pnp/pnpe/UntyAtchFile/downloadFile.do
+#   ?bidPbancNo={bid_no}&bidPbancOrd={bid_ord}&fileType=&fileSeq={seq}&prcmBsneSeCd=07
+# doc_type: notice(공고문) | spec(시방서) | boq(내역서) | drawing(도면) | other
+# 확인일 2026-11-03
+
+projects:
+  - id: P1
+    name: 국립국악고등학교 기숙사 화장실·샤워실·세탁실 개선공사
+    category: 화장실 개선 (타일·방수·위생설비)
+    bid_no: R25BK00914281
+    bid_ord: "000"
+    files:
+      - {seq: 2, doc_type: spec, discipline: 건축}
+      - {seq: 3, doc_type: drawing, discipline: 건축}
+      - {seq: 4, doc_type: spec, discipline: 기계}
+      - {seq: 5, doc_type: drawing, discipline: 기계}
+      - {seq: 6, doc_type: boq, discipline: 건축+기계}
+      - {seq: 7, doc_type: boq, discipline: 기계}
+
+  - id: P2
+    name: 도담중 외 2교(장기중, 한솔중) 지붕방수 철거 및 외벽 보수공사
+    category: 지붕방수·외벽 보수
+    bid_no: R26BK01345534
+    bid_ord: "000"
+    files:
+      - {seq: 1, doc_type: notice, discipline: 공통}
+      - {seq: 3, doc_type: boq, discipline: 건축}
+      - {seq: 4, doc_type: drawing, discipline: 건축}
+      - {seq: 5, doc_type: spec, discipline: 건축}
+
+  - id: P3
+    name: 현암중 화장실 환경개선 및 드라이비트 안전개선공사(계속비)
+    category: 화장실 개선 + 외벽 단열(드라이비트)
+    bid_no: R25BK01205597
+    bid_ord: "000"
+    files:
+      - {seq: 2, doc_type: boq, discipline: 건축}
+      - {seq: 3, doc_type: spec, discipline: 건축(드라이비트)}
+      - {seq: 4, doc_type: spec, discipline: 건축(화장실)}

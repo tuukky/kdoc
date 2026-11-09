@@ -1,0 +1,104 @@
+{
+  "name": "kdoc 검토 → Excel 다운로드",
+  "active": false,
+  "nodes": [
+    {
+      "id": "9cd23b80-0001-4000-8000-000000000001",
+      "name": "수동 실행",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 0],
+      "parameters": {}
+    },
+    {
+      "id": "9cd23b80-0001-4000-8000-000000000002",
+      "name": "대상 프로젝트",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [220, 0],
+      "parameters": {
+        "assignments": { "assignments": [{ "id": "project", "name": "project", "value": "P1", "type": "string" }] },
+        "options": {}
+      }
+    },
+    {
+      "id": "9cd23b80-0001-4000-8000-000000000003",
+      "name": "검토 요청",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 0],
+      "onError": "continueErrorOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "http://kdoc-api:8000/reviews",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project: $json.project }) }}",
+        "options": {
+          "timeout": 600000,
+          "response": { "response": { "fullResponse": true, "neverError": true, "responseFormat": "json" } }
+        }
+      }
+    },
+    {
+      "id": "9cd23b80-0001-4000-8000-000000000004",
+      "name": "검토 생성 성공?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [660, -60],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 },
+          "conditions": [{
+            "id": "created",
+            "leftValue": "={{ $json.statusCode === 201 && /^\\/reviews\\/[a-f0-9-]{36}\\/report$/.test($json.body?.report_url || '') }}",
+            "rightValue": "",
+            "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+          }],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "9cd23b80-0001-4000-8000-000000000005",
+      "name": "Excel 다운로드",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, -180],
+      "onError": "continueErrorOutput",
+      "parameters": {
+        "url": "={{ 'http://kdoc-api:8000' + $json.body.report_url }}",
+        "options": {
+          "timeout": 30000,
+          "response": { "response": { "responseFormat": "file", "outputPropertyName": "report" } }
+        }
+      }
+    },
+    {
+      "id": "9cd23b80-0001-4000-8000-000000000006",
+      "name": "실패 원인",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [1120, 140],
+      "parameters": {
+        "errorMessage": "={{ $json.statusCode ? 'HTTP ' + $json.statusCode + ': ' + JSON.stringify($json.body?.detail ?? $json.body) : ($json.error?.message || $json.error || '검토 요청 또는 다운로드 실패') }}"
+      }
+    }
+  ],
+  "connections": {
+    "수동 실행": { "main": [[{ "node": "대상 프로젝트", "type": "main", "index": 0 }]] },
+    "대상 프로젝트": { "main": [[{ "node": "검토 요청", "type": "main", "index": 0 }]] },
+    "검토 요청": { "main": [
+      [{ "node": "검토 생성 성공?", "type": "main", "index": 0 }],
+      [{ "node": "실패 원인", "type": "main", "index": 0 }]
+    ] },
+    "검토 생성 성공?": { "main": [
+      [{ "node": "Excel 다운로드", "type": "main", "index": 0 }],
+      [{ "node": "실패 원인", "type": "main", "index": 0 }]
+    ] },
+    "Excel 다운로드": { "main": [[], [{ "node": "실패 원인", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}

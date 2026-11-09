@@ -1,0 +1,51 @@
+# kdoc 자동화: n8n(fetch 실행·흐름) + kdoc-api(추출)
+#   cd docker && docker compose up -d --build
+#   n8n:      http://localhost:5678
+#   kdoc-api: http://localhost:8000/docs  (컨테이너끼리는 http://kdoc-api:8000)
+#
+# 두 컨테이너 모두 프로젝트 폴더를 /work 로 마운트한다.
+# → n8n 의 fetch 가 쓴 data/raw 를 kdoc-api 의 extract 가 그대로 읽는다.
+# 비밀값은 여기에 쓰지 않는다. 필요하면 프로젝트 루트 .env 에 둔다 (gitignore 됨).
+
+name: kdoc
+
+services:
+  kdoc-api:
+    build:
+      context: ..
+      dockerfile: docker/api.Dockerfile
+    image: kdoc-api:dev
+    container_name: kdoc-api
+    restart: unless-stopped
+    env_file:
+      - path: ../.env
+        required: false
+    volumes:
+      - ..:/work
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  n8n:
+    build:
+      context: .
+      dockerfile: n8n.Dockerfile
+    image: kdoc-n8n:dev
+    container_name: kdoc-n8n
+    restart: unless-stopped
+    environment:
+      - GENERIC_TIMEZONE=Asia/Seoul
+      - TZ=Asia/Seoul
+      - N8N_DIAGNOSTICS_ENABLED=false
+      - N8N_SECURE_COOKIE=false   # http://localhost 로만 접속하는 로컬 실습용
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ..:/work
+      - ../n8n:/home/node/workflows:ro   # 워크플로 JSON (import 용)
+    ports:
+      - "127.0.0.1:5678:5678"
+    depends_on:
+      kdoc-api:
+        condition: service_healthy
+
+volumes:
+  n8n_data:

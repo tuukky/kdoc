@@ -1,0 +1,50 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ---- 가상환경 ----
+.venv/
+.venv-app/
+
+# ---- 비밀값 (예시 파일만 올림) ----
+.env
+.env.*
+!.env.example
+
+# ---- EXE 빌드 산출물 (build_exe.bat 로 다시 만듦) ----
+build/
+dist/
+*.spec
+
+# ---- 데이터 ----
+# 원본 공고 파일: 용량이 크고 config/sources.yaml 로 언제든 다시 받을 수 있다 (manifest.json 은 올림)
+data/raw/**/*.pdf
+data/raw/**/*.xls
+data/raw/**/*.xlsx
+data/raw/**/*.hwp
+data/raw/**/*.zip
+# 추출 결과·검토 산출물·AI 캐시: 언제든 다시 생성
+data/interim/
+data/review/
+data/cache/
+
+# ---- 개인 작업 메모·AI 도구 상태 ----
+.private/
+.bkit/
+.vibe-wise/
+.claude/
+.cursor/
+
+# ---- OS·에디터 ----
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store
+*.log
+~$*

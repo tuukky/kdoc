@@ -1,0 +1,27 @@
+[project]
+name = "kdoc"
+version = "0.1.0"
+description = "건설 문서(도면·시방서·내역서) 불일치 검토 보조 도구"
+requires-python = ">=3.11"
+dependencies = [
+  "pymupdf>=1.24",
+  "pdfplumber>=0.11",
+  "openpyxl>=3.1",
+  "xlrd>=2.0",
+  "pandas>=2.2",
+  "pyyaml>=6.0",
+  "requests>=2.31",
+  "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "fastapi>=0.110", "httpx>=0.27"]
+api = ["fastapi>=0.110", "uvicorn>=0.29"]
+ai = ["openai>=1.40", "keyring>=25"]
+# 화면 프로그램·EXE: Anaconda 파이썬에선 PySide6(Qt 6.12)가 MSVC 런타임 충돌로 안 뜬다 → python.org 파이썬의 .venv-app 사용
+app = ["PySide6>=6.8", "openai>=1.40", "keyring>=25"]
+build = ["pyinstaller>=6.10"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
