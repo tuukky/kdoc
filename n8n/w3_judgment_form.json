@@ -1,0 +1,335 @@
+{
+  "id": "kdocW3JudgeForm1",
+  "name": "W3 판정 폼 → 정밀도 집계",
+  "active": false,
+  "nodes": [
+    {
+      "id": "600b244c-7096-53c2-8e08-b48e113dfbae",
+      "name": "판정 업로드 폼",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "formTitle": "kdoc 판정 올리기",
+        "formDescription": "결과 엑셀의 '판정' 열(진짜 문제 / 문제 아님 / 판단 못 함)을 채운 뒤 올리십시오. 검토 ID 는 알림함의 검토 완료 알림에 있습니다. 같은 항목을 다시 올리면 새 판정으로 바뀝니다.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "검토 ID",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "예: 3f2b8c1e-...."
+            },
+            {
+              "fieldLabel": "판정한 결과 엑셀",
+              "fieldType": "file",
+              "multipleFiles": false,
+              "acceptFileTypes": ".xlsx",
+              "requiredField": true
+            }
+          ]
+        },
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "webhookId": "af286666-a390-536a-8181-6563035dbc39"
+    },
+    {
+      "id": "5a320056-d316-52ba-9f6e-705d4284e7aa",
+      "name": "입력 확인",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst id = String(item.json['검토 ID'] ?? '').trim();\nconst file = Object.values(item.binary ?? {}).find((f) => String(f.fileName ?? '').toLowerCase().endsWith('.xlsx'));\nconst ok = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) && !!file;\nreturn [{ json: { id, ok, message: ok ? '' : '검토 ID 형식(UUID) 또는 .xlsx 파일을 확인하십시오.' }, binary: file ? { file } : {} }];\n"
+      }
+    },
+    {
+      "id": "d01090db-721c-5692-ac65-927bd699dd97",
+      "name": "입력 올바름?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "dedaf38d-160d-5bee-a078-8512ce8926d0",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "db16a325-767f-5564-aebb-2f1f11ad5e8c",
+      "name": "판정 저장",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        -100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'http://kdoc-api:8000/reviews/' + $json.id + '/judgments' }}",
+        "options": {
+          "timeout": 120000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "file"
+            }
+          ]
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "9bc90780-bf12-5db0-8071-d7c11185445b",
+      "name": "결과 정리",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        -100
+      ],
+      "parameters": {
+        "jsCode": "const detail = (r) => r?.body?.detail ?? r?.body ?? r?.error?.message ?? r?.error ?? '응답 없음';\nconst httpText = (r) => `HTTP ${r?.statusCode ?? '-'}: ${typeof detail(r) === 'string' ? detail(r) : JSON.stringify(detail(r))}`.slice(0, 500);\nconst won = (n) => n == null ? '없음' : String(n).replace(/\\B(?=(\\d{3})+(?!\\d))/g, ',') + '원';\n\nconst r = $json;\nif (r.statusCode !== 200) return { json: { ok: false, message: httpText(r) } };\nconst b = r.body;\nconst p = b.precision['전체'];\nconst pct = p['정밀도'] == null ? '아직 없음' : `${(p['정밀도'] * 100).toFixed(1)}%`;\nconst message = [\n  `${b.project}: ${b.saved}개 판정 저장 (진짜 문제 ${b.counts['진짜 문제']} · 문제 아님 ${b.counts['문제 아님']} · 판단 못 함 ${b.counts['판단 못 함']})`,\n  `전체 정밀도 ${pct} — 진짜 문제 ${p['진짜 문제']} / (진짜 문제 + 문제 아님 ${p['문제 아님']}), 판단 못 함 ${p['판단 못 함']}는 제외`,\n].join('\\n');\nreturn { json: { ok: true, message, alert: { kind: 'judgment', severity: 'info', title: `[판정 저장] ${b.project}`, body: message, project: b.project } } };\n",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "539a0036-caca-5146-8032-930df88df1e6",
+      "name": "저장 성공?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1100,
+        -100
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "de2906ae-4a09-5f4e-b595-7744a106e11f",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "0ec4796c-c345-56fb-8d1d-c1c967340d5a",
+      "name": "알림 남기기",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        -200
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://kdoc-api:8000/alerts",
+        "options": {
+          "timeout": 60000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.alert) }}"
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "acc10b25-9346-5209-a460-851bfc8ff8f9",
+      "name": "완료 화면",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 1,
+      "position": [
+        1540,
+        -200
+      ],
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "판정을 저장했습니다",
+        "completionMessage": "={{ $('결과 정리').item.json.message }}"
+      },
+      "webhookId": "ed559d26-e7ca-5edb-896e-6f90612f4ab9"
+    },
+    {
+      "id": "759de8f9-1483-5cf7-8b4c-b54f891599de",
+      "name": "실패 화면",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 1,
+      "position": [
+        1320,
+        100
+      ],
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "판정을 저장하지 못했습니다",
+        "completionMessage": "={{ $json.message }}"
+      },
+      "webhookId": "99e8f99b-d173-5276-a0df-0848a032b838"
+    }
+  ],
+  "connections": {
+    "판정 업로드 폼": {
+      "main": [
+        [
+          {
+            "node": "입력 확인",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "입력 확인": {
+      "main": [
+        [
+          {
+            "node": "입력 올바름?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "입력 올바름?": {
+      "main": [
+        [
+          {
+            "node": "판정 저장",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "실패 화면",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "판정 저장": {
+      "main": [
+        [
+          {
+            "node": "결과 정리",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "결과 정리",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "결과 정리": {
+      "main": [
+        [
+          {
+            "node": "저장 성공?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "저장 성공?": {
+      "main": [
+        [
+          {
+            "node": "알림 남기기",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "실패 화면",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "알림 남기기": {
+      "main": [
+        [
+          {
+            "node": "완료 화면",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "errorWorkflow": "kdocW4ErrHandle1"
+  },
+  "pinData": {},
+  "tags": []
+}

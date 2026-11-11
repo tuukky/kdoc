@@ -1,4 +1,5 @@
 """CLI: python -m kdoc {fetch|extract|stats|sections} [--project P1]
+     python -m kdoc bench [--project P1] [--seed 42]                                  (검출률 측정)
      python -m kdoc review --spec a.pdf --boq b.xlsx [--drawing c.pdf] [--out 폴더]   (화면 프로그램과 같은 검토)
      python -m kdoc review --project P1                                              (받아둔 공고 파일로 검토)"""
 
@@ -12,6 +13,12 @@ from . import fetch
 
 
 def main(argv: list[str] | None = None) -> int:
+    # 프로젝트 루트의 .env (OPENAI_API_KEY 등). 이미 설정된 환경변수가 우선한다.
+    from dotenv import load_dotenv
+
+    from . import ROOT
+
+    load_dotenv(ROOT / ".env", override=False)
     p = argparse.ArgumentParser(prog="kdoc")
     sub = p.add_subparsers(dest="cmd", required=True)
     for name in ("fetch", "extract", "stats", "sections"):
@@ -24,10 +31,20 @@ def main(argv: list[str] | None = None) -> int:
     rv.add_argument("--drawing", nargs="*", default=[])
     rv.add_argument("--out", help="결과 폴더 (기본 data/review/{P 또는 local})")
     rv.add_argument("--no-ai", action="store_true", help="AI 없이 사용자 지정 및 이름 일치로 공정 짝")
+    bn = sub.add_parser("bench", help="불일치를 심은 정답 테스트셋으로 검출률 측정 → data/bench/")
+    bn.add_argument("--project", nargs="*", help="P1 P2 ... (생략 시 전체)")
+    bn.add_argument("--seed", type=int, default=42)
+    bn.add_argument("--per-type", type=int, default=3, help="유형별 프로젝트당 최대 심는 수")
     args = p.parse_args(argv)
 
     if args.cmd == "review":
         return _review(args)
+    if args.cmd == "bench":
+        from . import bench
+
+        result = bench.run(args.project, seed=args.seed, per_type=args.per_type)
+        print(bench.to_markdown(result))
+        return 0
 
     projects = fetch.load_sources()
     if args.project:

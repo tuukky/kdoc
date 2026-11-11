@@ -7,6 +7,7 @@
   - '제 6장. 방 수 공 사' / '제 1 절 일반공통사항'        → 장
   - '제1편 일반시방서' 아래 ' 2. 콘 크 리 트 공 사'         → 편 + (번호형) 장
   - '1.' 다음 줄에 '일반사항' (번호와 제목이 다른 줄)        → 줄 합치기
+  - '제1 장' 다음 줄에 '일반사항' (장 번호와 제목이 다른 줄)  → 줄 합치기 (2026-11-11 나라장터 자동 수집 공고에서 확인)
 문서에 '제N장/절'이 있으면 그것을 장으로, 없으면 공종명으로 끝나는 'N. 제목'을 장으로 본다.
 """
 
@@ -42,6 +43,27 @@ def _merge_lone_numbers(lines: list[str]) -> list[str]:
     return out
 
 
+def _merge_lone_chapters(lines: list[str]) -> list[str]:
+    """'제1 장' / '일반사항' 처럼 장 번호만 있는 줄을 다음 줄 제목과 합친다."""
+    out, i = [], 0
+    while i < len(lines):
+        m = RE_CHAPTER.match(lines[i]) or RE_PART.match(lines[i])
+        nxt = lines[i + 1].strip() if i + 1 < len(lines) else ""
+        if (m and not m.group(2).strip() and nxt and len(nxt) <= 30
+                and not (RE_CHAPTER.match(nxt) or RE_PART.match(nxt) or RE_NUM.match(nxt))):
+            title, j = nxt, i + 2
+            # '총' / '칙' 처럼 글자마다 줄이 나뉜 제목은 짧은 줄을 더 붙인다
+            while len(compact(title)) < 2 and j < len(lines) and len(lines[j].strip()) <= 3:
+                title += lines[j].strip()
+                j += 1
+            out.append(f"{lines[i].rstrip()} {title}")
+            i = j
+            continue
+        out.append(lines[i])
+        i += 1
+    return out
+
+
 def _looks_like_chapter_title(title: str) -> bool:
     c = compact(title)
     spaced = len(re.findall(r"(?:^|\s)\S(?=\s)", title)) >= 2  # '방 수 공 사' 처럼 띄어 쓴 제목
@@ -68,7 +90,7 @@ def split_clauses(pages: list[dict]) -> list[dict]:
         lines = [l for l in pg["text"].splitlines() if l.strip()]
         if _is_toc(lines):
             continue
-        page_lines.append((pg["page"], _merge_lone_numbers(lines)))
+        page_lines.append((pg["page"], _merge_lone_numbers(_merge_lone_chapters(lines))))
 
     has_explicit = any(RE_CHAPTER.match(l) for _, ls in page_lines for l in ls)
 

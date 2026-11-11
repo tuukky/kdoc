@@ -1,0 +1,179 @@
+{
+  "id": "kdocW4WeeklySum1",
+  "name": "W4-weekly 주간 운영 요약",
+  "active": false,
+  "nodes": [
+    {
+      "id": "57efe658-4185-507d-9cfe-bec546ac85bc",
+      "name": "월요일 08:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * 1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "92e97da1-cbf2-5d55-99a5-1886705f32a6",
+      "name": "수동 실행",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "b80f090d-9cab-5da3-b3bf-a7d5241ee7c5",
+      "name": "주간 통계",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        100
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "http://kdoc-api:8000/ops/stats?days=7",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "dfea345b-7ffa-53b0-b23c-1e5f87b4cffb",
+      "name": "정밀도",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        100
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "http://kdoc-api:8000/metrics/precision",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "c74e5654-30ca-5aa3-8561-5a94cb3c64fe",
+      "name": "요약 쓰기",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        100
+      ],
+      "parameters": {
+        "jsCode": "const s = $('주간 통계').first().json;\nconst p = $input.first().json['전체'];\nconst STATUS = { ready: '검토 대기', fetched: '받음', reviewed: '검토 완료', skipped: '검토 못 함', failed: '실패' };\nconst kv = (o) => Object.entries(o ?? {}).map(([k, v]) => `${STATUS[k] ?? k} ${v}`).join(' · ') || '없음';\nconst lat = s['공고 등록→알림(초)'];\nconst body = [\n  `기간: ${s['시작'].slice(0, 10)} ~ 오늘`,\n  `공고 등록 ${s.공고.등록}건: ${kv(s.공고.상태별)}`,\n  `검토 못 한 사유: ${kv(s.공고['검토 못 한 사유'])}`,\n  `검토 성공 ${s.검토.성공} · 실패 ${s.검토.실패} (${kv(s.검토.출처별)}) · 처리 시간 P50 ${s.검토['처리 시간 P50(초)'] ?? '-'}초 / P90 ${s.검토['처리 시간 P90(초)'] ?? '-'}초`,\n  `공고 등록→알림: ${lat.건수}건, P50 ${lat.P50 ?? '-'}초 / P90 ${lat.P90 ?? '-'}초`,\n  `실패 이벤트: ${(s['실패 이벤트'] ?? []).map((e) => `${e.code} ${e.n}`).join(' · ') || '없음'}`,\n  `나라장터 요청 수: ${kv(s['외부 요청 수(일별)'])}`,\n  `판정 누적 ${p['판정 수']}개, 정밀도 ${p['정밀도'] == null ? '아직 없음' : (p['정밀도'] * 100).toFixed(1) + '%'}`,\n].join('\\n');\nreturn [{ json: { alert: { kind: 'summary', severity: 'info', title: '[주간 요약] kdoc 운영', body } } }];\n"
+      }
+    },
+    {
+      "id": "dc32f335-3f11-50cb-95ac-94dbee95940b",
+      "name": "알림 남기기",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://kdoc-api:8000/alerts",
+        "options": {
+          "timeout": 60000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.alert) }}"
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "월요일 08:00": {
+      "main": [
+        [
+          {
+            "node": "주간 통계",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "수동 실행": {
+      "main": [
+        [
+          {
+            "node": "주간 통계",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "주간 통계": {
+      "main": [
+        [
+          {
+            "node": "정밀도",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "정밀도": {
+      "main": [
+        [
+          {
+            "node": "요약 쓰기",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "요약 쓰기": {
+      "main": [
+        [
+          {
+            "node": "알림 남기기",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "errorWorkflow": "kdocW4ErrHandle1"
+  },
+  "pinData": {},
+  "tags": []
+}

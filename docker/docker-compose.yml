@@ -20,6 +20,8 @@ services:
     env_file:
       - path: ../.env
         required: false
+    environment:
+      - TZ=Asia/Seoul   # 운영 DB·알림 시각을 한국 시간으로
     volumes:
       - ..:/work
     ports:

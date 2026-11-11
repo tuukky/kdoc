@@ -1,0 +1,922 @@
+{
+  "id": "kdocW1G2bWatch01",
+  "name": "W1 나라장터 신규 공고 감시 → 검토 → 알림",
+  "active": false,
+  "nodes": [
+    {
+      "id": "33069d58-f5e1-5c94-ae65-2cef524ac1d0",
+      "name": "매일 07:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "76534824-b1b6-5fae-a28b-ecef654e7939",
+      "name": "수동 실행",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "5bffbdf5-8745-5665-91bf-1aea36582b9b",
+      "name": "조회 조건",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        100
+      ],
+      "parameters": {
+        "jsCode": "// 검색 기간: 어제~오늘 (게시일). 같은 공고는 kdoc-api 가 'seen' 으로 걸러 다시 처리하지 않는다.\n// 지난 날짜로 시험하려면 OVERRIDE 에 { start: '20261110', end: '20261110' } 처럼 넣고 [수동 실행].\nconst OVERRIDE = null;\nconst KEYWORDS = ['화장실', '방수', '외벽', '도장', '타일', '창호', '단열', '리모델링'];  // PLAN_v2 §4.1\nconst ymd = (d) => new Date(d.getTime() + 9 * 3600e3).toISOString().slice(0, 10).replace(/-/g, '');  // KST\nconst now = new Date();\nconst start = OVERRIDE?.start ?? ymd(new Date(now.getTime() - 24 * 3600e3));\nconst end = OVERRIDE?.end ?? ymd(now);\nreturn KEYWORDS.map((keyword) => ({ json: { keyword, start, end, started: now.toISOString() } }));\n"
+      }
+    },
+    {
+      "id": "da48efee-f155-5af6-abd4-822b295bde3b",
+      "name": "나라장터 검색",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.g2b.go.kr/fi/fiu/fiua/UntySrch/srchTotal.do",
+        "options": {
+          "timeout": 60000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 2000
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ dlSrchParamM: { currentPage: 1, recordCountPerPage: '100', srchSeCd: '', untySrchSeCd: 'BK', bizNm: $json.keyword, bizNo: '', bizYmdDiv: 'pstgDt', bizYmd: '', startBizYmd: $json.start, endBizYmd: $json.end, prcmBsneAreaCd: '조070004', frcpYn: 'N', laseYn: 'N', rsrvYn: 'N', cucUseYn: 'N' } }) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "kdoc-research/0.2 (+https://github.com/tuukky/kdoc)"
+            },
+            {
+              "name": "Referer",
+              "value": "https://www.g2b.go.kr/"
+            }
+          ]
+        }
+      },
+      "notes": "키워드 사이 2초 (PLAN_v2 §4.4). 사이트가 응답하지 않으면 3회 재시도 후 실행 실패 → W4-err",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "2f524469-d63d-5566-8a0f-53db8e176d51",
+      "name": "공고 정리·필터",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        100
+      ],
+      "parameters": {
+        "jsCode": "// PLAN_v2 §4.1 (사전 등록): 공사 입찰공고 · 제외 공종 · 추정가격 10억 원 이하 · 하루 30건\nconst EXCLUDE = /(전기|통신|소방|기계설비|조경|토목|포장)\\s*공사/;\nconst PRICE_MAX = 1_000_000_000;\nconst DAILY_MAX = 30;\nconst conds = $('조회 조건').all().map((i) => i.json);\nconst clean = (s) => String(s ?? '').replace(/&lt;\\/?b&gt;|<\\/?b>/g, '').replace(/&#40;/g, '(').replace(/&#41;/g, ')')\n  .replace(/&quot;/g, '\"').replace(/&#39;/g, \"'\").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').trim();\nlet found = 0;\nconst byKey = new Map();\nconst perKeyword = {};\n$input.all().forEach((it, i) => {\n  const r = it.json;\n  if (!r || !Array.isArray(r.dlTotalSrchL) || !r.dlSetParamM) {\n    throw new Error('나라장터 검색 응답 구조가 바뀌었습니다 (dlTotalSrchL 없음) — 수집 중단');\n  }\n  const kw = conds[i]?.keyword ?? '?';\n  const total = r.dlSetParamM.totalSize;\n  perKeyword[kw] = total > r.dlTotalSrchL.length ? `${total} (앞 ${r.dlTotalSrchL.length}건만 조회)` : total;\n  for (const x of r.dlTotalSrchL) {\n    found++;\n    const key = `${x.bizNo}-${x.bizOrd}`;\n    if (!byKey.has(key)) byKey.set(key, { ...x, keyword: kw });\n  }\n});\nconst rows = [...byKey.values()].map((x) => ({\n  bid_no: x.bizNo, bid_ord: x.bizOrd, name: clean(x.bizNm), org: clean(x.pbancInstUntyGrpNm),\n  price: /^\\d+$/.test(String(x.pbancSrchItm03 ?? '')) ? Number(x.pbancSrchItm03) : null,\n  posted: x.pbancPstgDt ?? '', area: x.prcmBsneAreaNm, kind: x.untySrchSeCd, keyword: x.keyword,\n}));\nconst dropped = { '공사 아님': 0, '제외 공종': 0, '금액 초과': 0 };\nconst pass = rows.filter((r) => {\n  if (r.kind !== 'BK' || r.area !== '공사') { dropped['공사 아님']++; return false; }\n  if (EXCLUDE.test(r.name)) { dropped['제외 공종']++; return false; }\n  if (r.price !== null && r.price > PRICE_MAX) { dropped['금액 초과']++; return false; }\n  return true;\n}).sort((a, b) => String(b.posted).localeCompare(String(a.posted)));\n// 하루 상한(DAILY_MAX)은 '새로 등록하는 공고' 수에 적용한다 (kdoc-api 가 셈). 이미 본 공고는 세지 않는다.\nconst todo = pass;\nconst stats = {\n  기간: `${conds[0].start}~${conds[0].end}`, started: conds[0].started, 검색결과: found, 공고수: rows.length,\n  키워드별: perKeyword, 제외: dropped, 필터통과: pass.length, 하루상한: DAILY_MAX,\n  금액없음: pass.filter((r) => r.price === null).length,\n};\nif (!todo.length) return [{ json: { empty: true, stats } }];\nreturn todo.map((r) => ({ json: { ...r, revised: r.bid_ord !== '000', daily_limit: DAILY_MAX, stats } }));\n"
+      }
+    },
+    {
+      "id": "496f9329-aa83-52bc-a454-8f829fe20459",
+      "name": "처리할 공고 있음?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        100
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c00aa909-4bcc-50e4-b2eb-b982a4b1640b",
+              "leftValue": "={{ $json.empty !== true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "f3b5354d-f164-5d3f-98b2-35eda20b5b29",
+      "name": "공고 하나씩",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1100,
+        0
+      ],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "d01fd849-e48d-5d19-b4c0-a48700dc0c19",
+      "name": "공고 등록",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        80
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://kdoc-api:8000/bids",
+        "options": {
+          "timeout": 180000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ bid_no: $json.bid_no, bid_ord: $json.bid_ord, name: $json.name, org: $json.org, price: $json.price, posted: $json.posted, daily_limit: $json.daily_limit }) }}"
+      },
+      "notes": "kdoc-api 가 첨부를 1초 간격으로 확인·분류 (§4.2). 이미 본 공고면 seen",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "ad178dee-68e2-5899-ae8f-0372c446ad6d",
+      "name": "등록 결과",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        80
+      ],
+      "parameters": {
+        "jsCode": "const detail = (r) => r?.body?.detail ?? r?.body ?? r?.error?.message ?? r?.error ?? '응답 없음';\nconst httpText = (r) => `HTTP ${r?.statusCode ?? '-'}: ${typeof detail(r) === 'string' ? detail(r) : JSON.stringify(detail(r))}`.slice(0, 500);\nconst won = (n) => n == null ? '없음' : String(n).replace(/\\B(?=(\\d{3})+(?!\\d))/g, ',') + '원';\n\nconst bid = $('공고 하나씩').item.json;\nconst r = $json;\n// 사이트가 막았거나 하루 요청 상한 → 그날 수집 중단 (§4.4). 실행 실패 → W4-err 가 기록·알림\nif (r.statusCode === 503) throw new Error(`나라장터 수집 중단: ${httpText(r)}`);\nconst project = r.body?.project ?? `G-${bid.bid_no}-${bid.bid_ord}`;\nif (r.statusCode >= 200 && r.statusCode < 300) {\n  const go = r.body.status === 'new' && r.body.ready;\n  return { json: { ...bid, project, next: go ? 'fetch' : 'skip', reason: go ? '' : ({ seen: '이미 처리한 공고', deferred: '하루 상한' }[r.body.status] ?? r.body.reason) } };\n}\nreturn { json: { ...bid, project, next: 'fail', step: '공고 등록', reason: httpText(r) } };\n",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "71784643-72d8-5886-b542-d9977e65dabb",
+      "name": "검토 가능?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1760,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "05816510-3349-5b69-8abd-99c218ebe227",
+              "leftValue": "={{ $json.next === 'fetch' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "5bf03c02-6f33-5f88-beb4-f7253fffc993",
+      "name": "등록 실패?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1760,
+        200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1b37a25-a5e2-5c02-9aac-3aa727546a43",
+              "leftValue": "={{ $json.next === 'fail' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "79924089-8477-5bf9-8f91-6bd79098e9f3",
+      "name": "첨부 받기",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        -100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'http://kdoc-api:8000/bids/' + $json.project + '/fetch' }}",
+        "options": {
+          "timeout": 600000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "73c625c5-fa45-5af5-ad8a-89131fa74bf8",
+      "name": "받기 결과",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        -100
+      ],
+      "parameters": {
+        "jsCode": "const detail = (r) => r?.body?.detail ?? r?.body ?? r?.error?.message ?? r?.error ?? '응답 없음';\nconst httpText = (r) => `HTTP ${r?.statusCode ?? '-'}: ${typeof detail(r) === 'string' ? detail(r) : JSON.stringify(detail(r))}`.slice(0, 500);\nconst won = (n) => n == null ? '없음' : String(n).replace(/\\B(?=(\\d{3})+(?!\\d))/g, ',') + '원';\n\nconst bid = $('등록 결과').item.json;\nreturn { json: { ...bid, next: $json.statusCode === 200 ? 'review' : 'fail', step: '첨부 받기', reason: httpText($json) } };\n",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "1e782987-4f6e-58be-a868-1244ef9dc1fe",
+      "name": "받기 성공?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2420,
+        -100
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0be637dc-9158-59ee-a619-df5ca18978b9",
+              "leftValue": "={{ $json.next === 'review' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "cb2daa58-2862-52ac-b237-14870cb38dc8",
+      "name": "검토",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2640,
+        -200
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://kdoc-api:8000/reviews",
+        "options": {
+          "timeout": 900000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project: $json.project }) }}"
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "72e51e44-b84b-5084-946a-49e31f5f3405",
+      "name": "검토 결과",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2860,
+        -200
+      ],
+      "parameters": {
+        "jsCode": "const detail = (r) => r?.body?.detail ?? r?.body ?? r?.error?.message ?? r?.error ?? '응답 없음';\nconst httpText = (r) => `HTTP ${r?.statusCode ?? '-'}: ${typeof detail(r) === 'string' ? detail(r) : JSON.stringify(detail(r))}`.slice(0, 500);\nconst won = (n) => n == null ? '없음' : String(n).replace(/\\B(?=(\\d{3})+(?!\\d))/g, ',') + '원';\n\nconst bid = $('등록 결과').item.json;\nconst r = $json;\nif (r.statusCode !== 201) return { json: { ...bid, next: 'fail', step: '검토', reason: httpText(r) } };\nconst s = r.body.summary;\nconst body = [\n  `${bid.org} · 추정가격 ${won(bid.price)}${bid.revised ? ' · 정정 공고' : ''} · 게시 ${bid.posted}`,\n  `내역서에 없음 ${s['내역서에 없음']} · 시방서에 없음 ${s['시방서에 없음']} · 수치 다름 ${s['수치 다름']} · 수치 판단 불가 ${s['수치 판단 불가']}`,\n  `공정 짝 ${s['짝']} · 짝 판단 불가 ${s['판단 불가']} · 처리 ${r.body.seconds}초`,\n  `검토 ID ${r.body.review_id} (판정 폼에 이 ID 를 넣으세요)`,\n].join('\\n');\nreturn { json: { ...bid, next: 'done', review_id: r.body.review_id, title: bid.name,\n  alert: { kind: 'review', severity: 'success', title: `[검토 완료] ${bid.name}`, body, link: r.body.report_url, project: bid.project } } };\n",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "76a4fc33-07fe-549a-8e59-33aed5b613f0",
+      "name": "검토 성공?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3080,
+        -200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "d891cbf3-84ac-5db3-94c6-bcdf09e88cf3",
+              "leftValue": "={{ $json.next === 'done' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "c29392eb-6412-54d4-b8d2-6ddcf84ac70d",
+      "name": "알림: 검토 완료",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3300,
+        -300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://kdoc-api:8000/alerts",
+        "options": {
+          "timeout": 60000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.alert) }}"
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "11bae6ae-92f1-589f-babd-531b89d26066",
+      "name": "질의서 초안 (W5, 선택)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        3520,
+        -420
+      ],
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "kdocW5Inquiry001",
+          "mode": "id"
+        },
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "disabled": true,
+      "notes": "OpenAI 자격 증명을 W5 에 연결한 뒤 켜십시오 (PLAN_v2 W5)"
+    },
+    {
+      "id": "586e62e5-6be2-5b56-aa19-ff08efe9fbf1",
+      "name": "실패 정리",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        260
+      ],
+      "parameters": {
+        "jsCode": "const detail = (r) => r?.body?.detail ?? r?.body ?? r?.error?.message ?? r?.error ?? '응답 없음';\nconst httpText = (r) => `HTTP ${r?.statusCode ?? '-'}: ${typeof detail(r) === 'string' ? detail(r) : JSON.stringify(detail(r))}`.slice(0, 500);\nconst won = (n) => n == null ? '없음' : String(n).replace(/\\B(?=(\\d{3})+(?!\\d))/g, ',') + '원';\n\nconst bid = $('공고 하나씩').item.json;\nconst project = `G-${bid.bid_no}-${bid.bid_ord}`;\nconst reason = $json.reason ?? `연결 오류: ${$json.error?.message ?? JSON.stringify($json).slice(0, 300)}`;\nconst step = $json.step ?? '연결';\nreturn { json: {\n  event: { source: 'n8n-W1', code: `${step} 실패`, message: `${bid.name}: ${reason}`, level: 'error', project },\n  alert: { kind: 'failure', severity: 'warn', title: `[검토 실패] ${bid.name}`, body: `${step} 단계: ${reason}`, project },\n} };\n",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "0c83276a-1358-5f54-a58c-08dac661ab7c",
+      "name": "실패 기록",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2860,
+        260
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://kdoc-api:8000/ops/events",
+        "options": {
+          "timeout": 60000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.event) }}"
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "486b2d5c-3f70-5cad-b021-97c5ed734b70",
+      "name": "알림: 검토 실패",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3080,
+        260
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://kdoc-api:8000/alerts",
+        "options": {
+          "timeout": 60000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('실패 정리').item.json.alert) }}"
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "889ae9ed-7b99-5565-b531-e28f285ce187",
+      "name": "이번 실행 통계",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        -260
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'http://kdoc-api:8000/ops/stats?minutes=' + Math.min(1440, Math.ceil((Date.now() - new Date($('조회 조건').first().json.started).getTime()) / 60000) + 1) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "executeOnce": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "e4ea658f-d28a-5f87-8710-3151ff6bdc3a",
+      "name": "하루 요약",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        -260
+      ],
+      "parameters": {
+        "jsCode": "const st = $('공고 정리·필터').first().json.stats;\nconst api = $input.first().json;\nconst STATUS = { ready: '검토 대기', fetched: '받음', reviewed: '검토 완료', skipped: '검토 못 함', failed: '실패' };\nconst kv = (o) => Object.entries(o ?? {}).map(([k, v]) => `${STATUS[k] ?? k} ${v}`).join(' · ') || '없음';\nconst body = [\n  `검색 기간 ${st.기간} · 검색 결과 ${st.검색결과}건 (공고 ${st.공고수}건)`,\n  `키워드별: ${kv(st.키워드별)}`,\n  `제외: ${kv(st.제외)}`,\n  `필터 통과 ${st.필터통과}건 (추정가격 없음 ${st.금액없음}) · 새 공고 하루 상한 ${st.하루상한}건`,\n  `새로 등록한 공고 ${api.공고.등록}건: ${kv(api.공고.상태별)} · 하루 상한으로 미룸 ${api['수집 정보']?.['하루 상한으로 미룸'] ?? 0}건`,\n  `검토 못 한 사유: ${kv(api.공고['검토 못 한 사유'])}`,\n  `검토 성공 ${api.검토.성공} · 실패 ${api.검토.실패} · 처리 시간 P50 ${api.검토['처리 시간 P50(초)'] ?? '-'}초`,\n  `실패 이벤트: ${(api['실패 이벤트'] ?? []).map((e) => `${e.code} ${e.n}`).join(' · ') || '없음'}`,\n].join('\\n');\nconst severity = (api['실패 이벤트'] ?? []).length ? 'warn' : 'info';\nreturn [{ json: { alert: { kind: 'summary', severity, title: `[W1 요약] 나라장터 수집 ${st.기간}`, body } } }];\n"
+      }
+    },
+    {
+      "id": "50a2ee8d-2a4d-5e38-bb0c-351689e5bbac",
+      "name": "알림: 하루 요약",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1760,
+        -260
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://kdoc-api:8000/alerts",
+        "options": {
+          "timeout": 60000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.alert) }}"
+      },
+      "executeOnce": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "매일 07:00": {
+      "main": [
+        [
+          {
+            "node": "조회 조건",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "수동 실행": {
+      "main": [
+        [
+          {
+            "node": "조회 조건",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "조회 조건": {
+      "main": [
+        [
+          {
+            "node": "나라장터 검색",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "나라장터 검색": {
+      "main": [
+        [
+          {
+            "node": "공고 정리·필터",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "공고 정리·필터": {
+      "main": [
+        [
+          {
+            "node": "처리할 공고 있음?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "처리할 공고 있음?": {
+      "main": [
+        [
+          {
+            "node": "공고 하나씩",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "이번 실행 통계",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "공고 하나씩": {
+      "main": [
+        [
+          {
+            "node": "이번 실행 통계",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "공고 등록",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "공고 등록": {
+      "main": [
+        [
+          {
+            "node": "등록 결과",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "실패 정리",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "등록 결과": {
+      "main": [
+        [
+          {
+            "node": "검토 가능?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "검토 가능?": {
+      "main": [
+        [
+          {
+            "node": "첨부 받기",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "등록 실패?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "등록 실패?": {
+      "main": [
+        [
+          {
+            "node": "실패 정리",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "공고 하나씩",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "첨부 받기": {
+      "main": [
+        [
+          {
+            "node": "받기 결과",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "실패 정리",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "받기 결과": {
+      "main": [
+        [
+          {
+            "node": "받기 성공?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "받기 성공?": {
+      "main": [
+        [
+          {
+            "node": "검토",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "실패 정리",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "검토": {
+      "main": [
+        [
+          {
+            "node": "검토 결과",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "실패 정리",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "검토 결과": {
+      "main": [
+        [
+          {
+            "node": "검토 성공?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "검토 성공?": {
+      "main": [
+        [
+          {
+            "node": "알림: 검토 완료",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "실패 정리",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "알림: 검토 완료": {
+      "main": [
+        [
+          {
+            "node": "공고 하나씩",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "질의서 초안 (W5, 선택)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "실패 정리": {
+      "main": [
+        [
+          {
+            "node": "실패 기록",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "실패 기록": {
+      "main": [
+        [
+          {
+            "node": "알림: 검토 실패",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "알림: 검토 실패": {
+      "main": [
+        [
+          {
+            "node": "공고 하나씩",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "이번 실행 통계": {
+      "main": [
+        [
+          {
+            "node": "하루 요약",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "하루 요약": {
+      "main": [
+        [
+          {
+            "node": "알림: 하루 요약",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "errorWorkflow": "kdocW4ErrHandle1"
+  },
+  "pinData": {},
+  "tags": []
+}

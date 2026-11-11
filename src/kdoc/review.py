@@ -15,6 +15,8 @@ from uuid import uuid4
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.datavalidation import DataValidation
 
 from . import compare, pairing, pipeline
 from .sections import _autowidth, _link, group_chapters, group_sections, read_pairs
@@ -132,6 +134,9 @@ def run_review(files: dict[str, list[Path]], out_dir: Path, api_key: str | None 
         "spec_to_boq": [finding_row(f, paths, page_text) for f in findings if f["kind"] != compare.KIND_NOT_IN_SPEC],
         "boq_to_spec": [finding_row(f, paths, page_text) for f in findings if f["kind"] == compare.KIND_NOT_IN_SPEC],
     }
+    for key, prefix in (("spec_to_boq", "S"), ("boq_to_spec", "B")):
+        for i, r in enumerate(table[key], 1):
+            r["항목ID"] = f"{prefix}{i:03d}"
     summary = {
         "시작": stamp, "소요(초)": round(time.perf_counter() - t0, 1),
         "문서": ex["docs"], "시방서 장": len(chapters), "내역서 공종": len(sections),
@@ -238,16 +243,26 @@ def finding_row(f: dict, paths: dict, page_text: dict) -> dict:
 PAIR_COLS = ["기준", "시방서 장", "내역서 공종", "판정", "근거", "시방서 파일", "시방서 쪽", "내역서 파일", "내역서 위치"]
 FINDING_COLS = ["종류", "자재", "시방서 수치", "내역서 수치", "시방서 내용", "내역서 내용",
                 "시방서 파일", "시방서 쪽", "내역서 파일", "내역서 위치", "판정 근거"]
+JUDGE_COLS = ["항목ID", "판정"]
+VERDICTS = ("진짜 문제", "문제 아님", "판단 못 함")
 _FILL = {pairing.UNSURE: "FFF2CC", pairing.NONE: "F8CBAD", compare.KIND_VALUE_DIFF: "F8CBAD"}
 
 
-def _sheet(wb, title: str, cols: list[str], rows: list[dict], color_key: str) -> None:
+def _sheet(wb, title: str, cols: list[str], rows: list[dict], color_key: str, judge: bool = False) -> None:
+    """judge=True: 사람이 판정을 적는 '판정' 열(목록 선택)과 대조용 '항목ID' 열을 붙인다 (W3, PLAN_v2 §5.2)."""
     ws = wb.create_sheet(title)
+    cols = cols + (JUDGE_COLS if judge else [])
     ws.append(cols + ["시방서 열기", "내역서 열기", "시방서 전체 경로", "내역서 전체 경로"])
     for c in ws[1]:
         c.font = Font(bold=True)
+    if judge and rows:
+        col = get_column_letter(cols.index("판정") + 1)
+        dv = DataValidation(type="list", formula1='"' + ",".join(VERDICTS) + '"', allow_blank=True)
+        dv.add(f"{col}2:{col}{len(rows) + 1}")
+        ws.add_data_validation(dv)
     for r in rows:
-        ws.append([r.get(c, "") for c in cols] + ["", "", r["_spec_path"] or "", r["_boq_path"] or ""])
+        values = {**r, "판정": "" if r.get("종류") != compare.KIND_UNSURE else "—"} if judge else r
+        ws.append([values.get(c, "") for c in cols] + ["", "", r["_spec_path"] or "", r["_boq_path"] or ""])
         n = ws.max_row
         if r["_spec_path"]:
             ws.cell(n, len(cols) + 1, f"{r['_spec_page']}쪽 열기")
@@ -298,8 +313,8 @@ def write_excel(path: Path, summary: dict, table: dict) -> Path:
     ws.column_dimensions["B"].width = 90
 
     _sheet(wb, "공정 짝", PAIR_COLS, table["pairs"], "판정")
-    _sheet(wb, "시방서→내역서", FINDING_COLS, table["spec_to_boq"], "종류")
-    _sheet(wb, "내역서→시방서", FINDING_COLS, table["boq_to_spec"], "종류")
+    _sheet(wb, "시방서→내역서", FINDING_COLS, table["spec_to_boq"], "종류", judge=True)
+    _sheet(wb, "내역서→시방서", FINDING_COLS, table["boq_to_spec"], "종류", judge=True)
 
     ws = wb.create_sheet("안내")
     for line in [
@@ -315,6 +330,8 @@ def write_excel(path: Path, summary: dict, table: dict) -> Path:
         "  수치 비교 건수는 단일 수치로 비교한 조합 수입니다. 판단 불가 건수와 미짝 공정은 별도로 봅니다.",
         "[열기 링크] PDF는 브라우저(Edge·Chrome)로 열면 해당 쪽으로 이동합니다. 엑셀은 해당 시트·행으로 이동합니다.",
         "[도면] 이번 버전은 도면 문자만 추출하고 비교에는 쓰지 않습니다.",
+        "[판정 열] 확인한 뒤 '진짜 문제 / 문제 아님 / 판단 못 함' 중 하나를 고르십시오. "
+        "판정한 파일을 판정 폼(n8n W3)에 올리면 정밀도가 집계됩니다. '항목ID' 열은 지우거나 고치지 마십시오.",
     ]:
         ws.append([line])
     ws.column_dimensions["A"].width = 140

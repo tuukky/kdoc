@@ -1,0 +1,277 @@
+{
+  "id": "kdocW5Inquiry001",
+  "name": "W5 설계 질의서 초안 (선택, OpenAI)",
+  "active": false,
+  "nodes": [
+    {
+      "id": "c7a2a018-d99b-566c-8b6d-b78a9fa352a8",
+      "name": "다른 워크플로에서 호출",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "a2ff3047-b811-5d8a-9477-6d403e57e487",
+      "name": "수동 실행",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "0084f7d7-f5cb-5c8b-b539-c3f11259184f",
+      "name": "시험용 검토 ID",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        200
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "rid",
+              "name": "review_id",
+              "value": "여기에-검토-ID",
+              "type": "string"
+            },
+            {
+              "id": "ttl",
+              "name": "title",
+              "value": "시험",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "5cfdaadf-92f9-5f1c-842f-43eb90f6a9af",
+      "name": "의심 항목 상위 10개",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        100
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'http://kdoc-api:8000/reviews/' + $json.review_id + '/top?n=10' }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "dd88aa16-34cd-5ada-a54b-f801e2e6bdd8",
+      "name": "요청 만들기",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        100
+      ],
+      "parameters": {
+        "jsCode": "// 문서 본문은 보내지 않는다: 자재 이름·판정 종류·위치(쪽·행)만 (README '문서 외부 전송 최소화').\nconst top = $input.first().json;\nif (!top.items?.length) return [];\nconst title = $('다른 워크플로에서 호출').isExecuted ? $('다른 워크플로에서 호출').first().json.title : $('시험용 검토 ID').first().json.title;\nconst items = top.items.map((x, i) => ({ 번호: i + 1, 종류: x.kind, 자재: x.material,\n  시방서: x.spec_file ? `${x.spec_file} ${x.spec_page ?? ''}쪽` : '', 내역서: x.boq_file ? `${x.boq_file} ${x.boq_loc ?? ''}` : '' }));\nconst system = [\n  '너는 건설 공사 공무 담당자를 돕는다. 시방서·내역서 비교 도구가 찾은 의심 항목으로 설계사에 보낼 \"설계 질의서\" 초안을 한국어로 쓴다.',\n  '규칙: 오류라고 단정하지 말고 확인을 요청하는 문장으로 쓴다. 목록에 없는 수량·금액·공법을 지어내지 않는다.',\n  '항목마다 번호, 위치(시방서 쪽·내역서 위치), 질의 내용 1~2문장. 같은 자재의 항목은 묶어도 된다.',\n  '마지막 줄: \"본 질의는 검토 보조 도구가 찾은 후보이며 담당자 확인 후 발송합니다.\"',\n].join('\\n');\nreturn [{ json: { review_id: top.review_id, project: top.project, title, request: {\n  model: 'gpt-5-mini',\n  messages: [{ role: 'system', content: system }, { role: 'user', content: `공사: ${title}\\n의심 항목:\\n${JSON.stringify(items, null, 1)}` }],\n  max_completion_tokens: 3000,\n} } }];\n"
+      }
+    },
+    {
+      "id": "1e5df8e3-4ab9-57a5-b051-0f6339157f6e",
+      "name": "OpenAI 초안",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.request) }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000,
+      "notes": "자격 증명: n8n Credentials → OpenAI (키는 n8n 에만 저장). 검토 1건당 호출 1회."
+    },
+    {
+      "id": "2c8a8203-1e2b-51d8-846c-ff913b8ebce0",
+      "name": "초안 정리",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        100
+      ],
+      "parameters": {
+        "jsCode": "const req = $('요청 만들기').first().json;\nconst r = $input.first().json;\nconst text = r.choices?.[0]?.message?.content?.trim() || '(빈 응답)';\nconst u = r.usage ?? {};\nreturn [{ json: {\n  alert: { kind: 'draft', severity: 'info', title: `[질의서 초안] ${req.title}`, body: text, link: `/reviews/${req.review_id}/report`, project: req.project },\n  event: { source: 'n8n-W5', code: 'W5 호출', level: 'info', project: req.project,\n           message: `토큰 입력 ${u.prompt_tokens ?? '-'} · 출력 ${u.completion_tokens ?? '-'}`, data: { usage: u, model: r.model } },\n} }];\n"
+      }
+    },
+    {
+      "id": "4f91dd8c-8d8e-5eef-a5dc-5b0a024e2428",
+      "name": "알림 남기기",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://kdoc-api:8000/alerts",
+        "options": {
+          "timeout": 60000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.alert) }}"
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "22f62008-5092-513c-b57b-731629ac14f6",
+      "name": "호출 기록",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://kdoc-api:8000/ops/events",
+        "options": {
+          "timeout": 60000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('초안 정리').first().json.event) }}"
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "다른 워크플로에서 호출": {
+      "main": [
+        [
+          {
+            "node": "의심 항목 상위 10개",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "수동 실행": {
+      "main": [
+        [
+          {
+            "node": "시험용 검토 ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "시험용 검토 ID": {
+      "main": [
+        [
+          {
+            "node": "의심 항목 상위 10개",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "의심 항목 상위 10개": {
+      "main": [
+        [
+          {
+            "node": "요청 만들기",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "요청 만들기": {
+      "main": [
+        [
+          {
+            "node": "OpenAI 초안",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI 초안": {
+      "main": [
+        [
+          {
+            "node": "초안 정리",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "초안 정리": {
+      "main": [
+        [
+          {
+            "node": "알림 남기기",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "알림 남기기": {
+      "main": [
+        [
+          {
+            "node": "호출 기록",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "errorWorkflow": "kdocW4ErrHandle1"
+  },
+  "pinData": {},
+  "tags": []
+}

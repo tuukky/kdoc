@@ -32,6 +32,10 @@ data/raw/**/*.zip
 data/interim/
 data/review/
 data/cache/
+data/bench/
+data/ops/
+# W1 자동 수집 공고 (운영 데이터)
+data/raw/G-*/
 
 # ---- 개인 작업 메모·AI 도구 상태 ----
 .private/

@@ -1,0 +1,325 @@
+{
+  "id": "kdocW2UploadFrm1",
+  "name": "W2 업로드 검토 폼",
+  "active": false,
+  "nodes": [
+    {
+      "id": "c11979cd-0a6c-5ddf-8ef8-9899d7c97022",
+      "name": "검토 요청 폼",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "formTitle": "kdoc 설계도서 검토",
+        "formDescription": "시방서(PDF)와 내역서(엑셀)를 올리면 두 문서의 누락·수치 불일치 의심 위치를 엑셀로 정리합니다. 결과는 알림함(http://127.0.0.1:8000/ui/alerts)에서도 받을 수 있습니다. AI 는 쓰지 않습니다.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "시방서 (PDF)",
+              "fieldType": "file",
+              "multipleFiles": false,
+              "acceptFileTypes": ".pdf",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "내역서 (엑셀)",
+              "fieldType": "file",
+              "multipleFiles": false,
+              "acceptFileTypes": ".xls,.xlsx",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "공사명 (선택)",
+              "fieldType": "text"
+            }
+          ]
+        },
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "webhookId": "deb5a96d-1d48-571e-8cc7-dbf61b89e09b"
+    },
+    {
+      "id": "35efc80c-76cd-501e-8f86-e41c7ce993df",
+      "name": "파일 맞추기",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// 폼이 붙인 파일 이름(바이너리 키)은 버전마다 달라서 확장자로 골라 spec / boq / file 로 맞춘다.\nconst out = [];\nfor (const item of $input.all()) {\n  const bin = item.binary ?? {};\n  const pick = {};\n  for (const [key, f] of Object.entries(bin)) {\n    const ext = String(f.fileExtension ?? f.fileName?.split('.').pop() ?? '').toLowerCase();\n    if (ext === 'pdf' && !pick.spec) pick.spec = f;\n    else if ((ext === 'xlsx' || ext === 'xls') && !pick.boq) pick.boq = f;\n  }\n  out.push({ json: item.json, binary: pick });\n}\nreturn out;\n"
+      }
+    },
+    {
+      "id": "238ad9d6-3379-5c7f-9949-a252b615cba6",
+      "name": "업로드 검토",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://kdoc-api:8000/reviews/upload",
+        "options": {
+          "timeout": 900000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "spec",
+              "inputDataFieldName": "spec"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "boq",
+              "inputDataFieldName": "boq"
+            }
+          ]
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "6716a435-a72f-5c7e-8da2-bdb60aadd4d4",
+      "name": "결과 정리",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const detail = (r) => r?.body?.detail ?? r?.body ?? r?.error?.message ?? r?.error ?? '응답 없음';\nconst httpText = (r) => `HTTP ${r?.statusCode ?? '-'}: ${typeof detail(r) === 'string' ? detail(r) : JSON.stringify(detail(r))}`.slice(0, 500);\nconst won = (n) => n == null ? '없음' : String(n).replace(/\\B(?=(\\d{3})+(?!\\d))/g, ',') + '원';\n\nconst title = $('검토 요청 폼').item.json['공사명 (선택)'] || $('검토 요청 폼').item.binary?.spec?.fileName || '업로드 문서';\nconst r = $json;\nif (r.statusCode !== 201) {\n  return { json: { ok: false, message: httpText(r), alert: { kind: 'failure', severity: 'warn', title: `[업로드 검토 실패] ${title}`, body: httpText(r) } } };\n}\nconst s = r.body.summary;\nconst body = [\n  `내역서에 없음 ${s['내역서에 없음']} · 시방서에 없음 ${s['시방서에 없음']} · 수치 다름 ${s['수치 다름']} · 수치 판단 불가 ${s['수치 판단 불가']}`,\n  `공정 짝 ${s['짝']} · 짝 판단 불가 ${s['판단 불가']} · 처리 ${r.body.seconds}초`,\n  `검토 ID ${r.body.review_id}`,\n].join('\\n');\nreturn { json: { ok: true, review_id: r.body.review_id, title, message: body,\n  report: 'http://127.0.0.1:8000' + r.body.report_url,\n  alert: { kind: 'review', severity: 'success', title: `[업로드 검토 완료] ${title}`, body, link: r.body.report_url, project: 'UPLOAD' } } };\n",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "50f1f26d-7003-5b01-8256-ab161d4a922b",
+      "name": "알림 남기기",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://kdoc-api:8000/alerts",
+        "options": {
+          "timeout": 60000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.alert) }}"
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "74cc90e8-b962-5129-ac68-4e38c13a4aa4",
+      "name": "성공?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1100,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e26584e1-9998-5dfe-8bc5-695ee643cf3a",
+              "leftValue": "={{ $('결과 정리').item.json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "2fafd561-32f6-5727-8196-d1c3707c84ba",
+      "name": "완료 화면",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 1,
+      "position": [
+        1320,
+        -100
+      ],
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "검토가 끝났습니다",
+        "completionMessage": "={{ $('결과 정리').item.json.message }}\n\n결과 엑셀: {{ $('결과 정리').item.json.report }}\n알림함: http://127.0.0.1:8000/ui/alerts"
+      },
+      "webhookId": "be7d08e9-335d-5790-99d6-e680c4af48d0"
+    },
+    {
+      "id": "26847047-03a4-534d-8e53-724cc98c5062",
+      "name": "실패 화면",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 1,
+      "position": [
+        1320,
+        100
+      ],
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "검토하지 못했습니다",
+        "completionMessage": "={{ $('결과 정리').item.json.message }}\n\n시방서는 PDF, 내역서는 xls·xlsx 인지 확인하십시오."
+      },
+      "webhookId": "3787c227-c011-57bf-8814-ba7e37a96f9d"
+    },
+    {
+      "id": "eec6d373-4b07-5f69-ab63-0a80d4e2bd21",
+      "name": "질의서 초안 (W5, 선택)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1540,
+        -220
+      ],
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "kdocW5Inquiry001",
+          "mode": "id"
+        },
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "disabled": true
+    }
+  ],
+  "connections": {
+    "검토 요청 폼": {
+      "main": [
+        [
+          {
+            "node": "파일 맞추기",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "파일 맞추기": {
+      "main": [
+        [
+          {
+            "node": "업로드 검토",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "업로드 검토": {
+      "main": [
+        [
+          {
+            "node": "결과 정리",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "결과 정리",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "결과 정리": {
+      "main": [
+        [
+          {
+            "node": "알림 남기기",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "알림 남기기": {
+      "main": [
+        [
+          {
+            "node": "성공?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "성공?": {
+      "main": [
+        [
+          {
+            "node": "완료 화면",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "실패 화면",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "완료 화면": {
+      "main": [
+        [
+          {
+            "node": "질의서 초안 (W5, 선택)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "errorWorkflow": "kdocW4ErrHandle1"
+  },
+  "pinData": {},
+  "tags": []
+}

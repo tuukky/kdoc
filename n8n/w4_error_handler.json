@@ -1,0 +1,120 @@
+{
+  "id": "kdocW4ErrHandle1",
+  "name": "W4-err 오류 처리 (W1~W5 실패 기록·알림)",
+  "active": false,
+  "nodes": [
+    {
+      "id": "3d15b581-5e64-5e0d-a6a3-a523f25d9038",
+      "name": "워크플로 실패",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "9074b06b-8668-532e-bd36-1b3ba183d8a7",
+      "name": "오류 정리",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const e = $input.first().json;\nconst wfName = e.workflow?.name ?? '알 수 없는 워크플로';\nconst msg = e.execution?.error?.message ?? e.trigger?.error?.message ?? '오류 메시지 없음';\nconst node = e.execution?.lastNodeExecuted ?? '-';\nconst body = [`노드: ${node}`, `오류: ${msg}`, `실행: ${e.execution?.url ?? e.execution?.id ?? '-'}`].join('\\n');\nreturn [{ json: {\n  event: { source: 'n8n', code: `${wfName} 실패`, message: `${node}: ${msg}`.slice(0, 1000), level: 'error',\n           data: { execution: e.execution?.id ?? null, mode: e.execution?.mode ?? null } },\n  alert: { kind: 'failure', severity: 'error', title: `[실패] ${wfName}`, body },\n} }];\n"
+      }
+    },
+    {
+      "id": "cd9f01f2-768b-5b29-b866-38ba661270a7",
+      "name": "실패 기록",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://kdoc-api:8000/ops/events",
+        "options": {
+          "timeout": 60000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.event) }}"
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "487a6faf-b576-599a-804f-27942391b36d",
+      "name": "알림 남기기",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://kdoc-api:8000/alerts",
+        "options": {
+          "timeout": 60000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('오류 정리').first().json.alert) }}"
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "워크플로 실패": {
+      "main": [
+        [
+          {
+            "node": "오류 정리",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "오류 정리": {
+      "main": [
+        [
+          {
+            "node": "실패 기록",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "실패 기록": {
+      "main": [
+        [
+          {
+            "node": "알림 남기기",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true
+  },
+  "pinData": {},
+  "tags": []
+}

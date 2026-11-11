@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kdoc 알림함</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --text:#1f2933; --muted:#6b7684; --line:#e3e6ea; --accent:#1e6fd9;
+          --info:#1e6fd9; --success:#1f8a4c; --warn:#b26a00; --error:#c4302b; --unread:#eef4ff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14181d; --card:#1c2128; --text:#e6e9ed; --muted:#9aa4b1; --line:#2c333c; --accent:#5b9cf0;
+            --info:#5b9cf0; --success:#4cc38a; --warn:#f0b04a; --error:#f2706b; --unread:#1d2a3d; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font:15px/1.55 "Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR",sans-serif; }
+  header { position:sticky; top:0; background:var(--card); border-bottom:1px solid var(--line); z-index:1; }
+  .bar { max-width:920px; margin:0 auto; padding:14px 16px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  h1 { font-size:18px; margin:0; }
+  .badge { background:var(--error); color:#fff; border-radius:999px; padding:1px 9px; font-size:13px; font-weight:700; }
+  .badge.zero { background:var(--line); color:var(--muted); }
+  .spacer { flex:1; }
+  button, select { font:inherit; border:1px solid var(--line); background:var(--card); color:var(--text);
+                   border-radius:6px; padding:5px 10px; cursor:pointer; }
+  button:hover { border-color:var(--accent); }
+  main { max-width:920px; margin:0 auto; padding:16px; }
+  .meta { color:var(--muted); font-size:13px; }
+  .item { background:var(--card); border:1px solid var(--line); border-left:4px solid var(--info);
+          border-radius:8px; padding:12px 14px; margin-bottom:10px; }
+  .item.unread { background:var(--unread); }
+  .item.success { border-left-color:var(--success); } .item.warn { border-left-color:var(--warn); }
+  .item.error { border-left-color:var(--error); }
+  .top { display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; }
+  .title { font-weight:700; }
+  .kind { font-size:12px; color:var(--muted); border:1px solid var(--line); border-radius:4px; padding:0 6px; }
+  .body { white-space:pre-wrap; margin-top:6px; word-break:break-word; }
+  .actions { margin-top:8px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  a { color:var(--accent); }
+  .empty { text-align:center; color:var(--muted); padding:48px 0; }
+  .err { color:var(--error); }
+</style>
+</head>
+<body>
+<header><div class="bar">
+  <h1>kdoc 알림함</h1><span id="count" class="badge zero">0</span>
+  <span class="spacer"></span>
+  <select id="filter" aria-label="보기">
+    <option value="all">전체</option><option value="unread">안 읽음</option>
+    <option value="review">검토 완료</option><option value="error">실패</option><option value="summary">요약</option>
+    <option value="draft">질의서 초안</option>
+  </select>
+  <button id="readAll">모두 읽음</button>
+  <span class="meta" id="updated"></span>
+</div></header>
+<main id="list"><div class="empty">불러오는 중…</div></main>
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const safeLink = (u) => (typeof u === "string" && /^(\/|https?:\/\/)/.test(u)) ? u : null;
+let items = [];
+function filterKey() { try { return localStorage.getItem("kdoc-alert-filter") || "all"; } catch { return "all"; } }
+function render() {
+  const f = $("#filter").value;
+  const shown = items.filter((a) => f === "all" ? true : f === "unread" ? !a.read
+                 : f === "error" ? a.severity === "error" : a.kind === f);
+  $("#list").innerHTML = shown.length ? shown.map((a) => {
+    const link = safeLink(a.link);
+    return `<div class="item ${esc(a.severity)} ${a.read ? "" : "unread"}">
+      <div class="top"><span class="title">${esc(a.title)}</span><span class="kind">${esc(a.kind)}</span>
+        <span class="spacer"></span><span class="meta">${esc(a.ts.replace("T", " "))}</span></div>
+      ${a.body ? `<div class="body">${esc(a.body)}</div>` : ""}
+      <div class="actions">
+        ${link ? `<a href="${esc(link)}" target="_blank" rel="noopener">${link.includes("/report") ? "결과 엑셀 받기" : "열기"}</a>` : ""}
+        ${a.project ? `<span class="meta">${esc(a.project)}</span>` : ""}
+        ${a.read ? "" : `<button data-id="${a.id}">읽음</button>`}
+      </div></div>`;
+  }).join("") : `<div class="empty">알림이 없습니다.</div>`;
+}
+async function load() {
+  try {
+    const r = await fetch("/alerts?limit=300");
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const d = await r.json();
+    items = d.items;
+    const c = $("#count"); c.textContent = d.unread; c.classList.toggle("zero", d.unread === 0);
+    document.title = (d.unread ? `(${d.unread}) ` : "") + "kdoc 알림함";
+    $("#updated").textContent = "갱신 " + new Date().toLocaleTimeString("ko-KR");
+    render();
+  } catch (e) {
+    $("#updated").innerHTML = `<span class="err">API 연결 실패 (${esc(e.message)})</span>`;
+  }
+}
+$("#filter").value = filterKey();
+$("#filter").addEventListener("change", () => { try { localStorage.setItem("kdoc-alert-filter", $("#filter").value); } catch {} render(); });
+$("#readAll").addEventListener("click", async () => { await fetch("/alerts/read-all", {method: "POST"}); load(); });
+$("#list").addEventListener("click", async (e) => {
+  const id = e.target.dataset && e.target.dataset.id;
+  if (id) { await fetch(`/alerts/${id}/read`, {method: "POST"}); load(); }
+});
+load();
+setInterval(load, 30000);
+</script>
+</body>
+</html>

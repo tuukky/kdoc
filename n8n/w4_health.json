@@ -1,0 +1,168 @@
+{
+  "id": "kdocW4HealthChk1",
+  "name": "W4-health kdoc-api 상태 점검 (10분)",
+  "active": false,
+  "nodes": [
+    {
+      "id": "73f9a242-9536-579f-9a38-0c16611dc2b3",
+      "name": "10분마다",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 10
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "3a285eca-57de-5a0d-b1e7-e86b20bf3914",
+      "name": "상태 확인",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "http://kdoc-api:8000/health",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "47acd0db-20e7-562a-80ff-b7a6088613d0",
+      "name": "복구 확인",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        -100
+      ],
+      "parameters": {
+        "jsCode": "// 상태는 워크플로 고정 데이터에 둔다 (활성화한 실행에서만 저장됨 — 수동 실행은 시험용).\nconst s = $getWorkflowStaticData('global');\nif (!s.downSince) { s.fails = 0; return []; }\nconst mins = Math.round((Date.now() - s.downSince) / 60000);\nconst since = new Date(s.downSince + 9 * 3600e3).toISOString().slice(0, 16).replace('T', ' ');\ns.fails = 0;\ndelete s.downSince;\nreturn [{ json: { alert: { kind: 'failure', severity: 'warn', title: '[복구] kdoc-api 응답 재개',\n  body: `${since}(KST)부터 약 ${mins}분 동안 /health 응답이 없었습니다. 10분 간격 점검, 연속 2회 실패부터 장애로 봅니다.\\n그동안의 실패는 n8n 실행 기록(W4-health)에 있습니다.` } } }];\n"
+      }
+    },
+    {
+      "id": "0e9fd3f3-432b-5b95-82c1-2197398e3165",
+      "name": "알림 남기기",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        -100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://kdoc-api:8000/alerts",
+        "options": {
+          "timeout": 60000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.alert) }}"
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "e388fe32-7833-5371-be65-6b3ebbbab4cb",
+      "name": "장애 집계",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        100
+      ],
+      "parameters": {
+        "jsCode": "// API 가 죽으면 알림함에도 쓸 수 없으므로, 연속 2회째에 이 실행을 '실패'로 표시해 n8n 실행 기록에 남긴다.\n// 복구되면 '복구 확인'이 장애 시간을 알림함에 남긴다.\nconst s = $getWorkflowStaticData('global');\ns.fails = (s.fails ?? 0) + 1;\nif (s.fails === 1) s.firstFail = Date.now();\nif (s.fails === 2) {\n  s.downSince = s.firstFail;\n  return [{ json: { message: 'kdoc-api /health 연속 2회 응답 없음 (장애 시작)' } }];\n}\nreturn [];\n"
+      }
+    },
+    {
+      "id": "56a21ece-0d57-5fcd-b3a2-2f314259f6a4",
+      "name": "장애 표시",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        660,
+        100
+      ],
+      "parameters": {
+        "errorMessage": "={{ $json.message }}"
+      }
+    }
+  ],
+  "connections": {
+    "10분마다": {
+      "main": [
+        [
+          {
+            "node": "상태 확인",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "상태 확인": {
+      "main": [
+        [
+          {
+            "node": "복구 확인",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "장애 집계",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "복구 확인": {
+      "main": [
+        [
+          {
+            "node": "알림 남기기",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "장애 집계": {
+      "main": [
+        [
+          {
+            "node": "장애 표시",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "errorWorkflow": "kdocW4ErrHandle1"
+  },
+  "pinData": {},
+  "tags": []
+}

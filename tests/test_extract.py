@@ -143,3 +143,16 @@ def test_real_boq_and_ocr_flags():
     p2 = json.loads((INTERIM / "P2" / "summary.json").read_text(encoding="utf-8"))["docs"]
     drawing = next(d for d in p2 if d["doc_type"] == "drawing")
     assert drawing["needs_ocr_pages"] == drawing["pages"]  # P2 도면은 전부 스캔 이미지
+
+
+def test_spec_chapter_number_and_title_on_separate_lines():
+    """나라장터 자동 수집 공고(2026-11-11): '제1 장' 다음 줄에 제목, '총' / '칙' 처럼 글자마다 줄이 나뉜 제목."""
+    from kdoc.extract.spec import split_clauses
+
+    pages = [
+        {"page": 4, "text": "- 3 -\nⅡ. 특기시방서\n제1 장\n일반사항\n1. 본공사현장은 이용자가 많다.\n"},
+        {"page": 5, "text": "제2 장\n뿜칠스톤마감\n공법의 개요\n본 공법은 외단열공법이다.\n"},
+        {"page": 17, "text": "제1 장\n총\n칙\n1.1 적용범위\n이 시방서는 외벽 방수공사에 적용한다.\n"},
+    ]
+    chapters = {(c["chapter_no"], c["chapter"]) for c in split_clauses(pages)}
+    assert {(1, "일반사항"), (2, "뿜칠스톤마감"), (1, "총칙")} <= chapters
